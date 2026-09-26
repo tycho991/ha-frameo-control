@@ -141,13 +141,30 @@ class FrameoAddonApiClient:
         return await self._request("POST", "/shell", {"command": command})
 
     async def async_get_state(self) -> dict[str, Any] | None:
-        """Get the current device state (screen on/off, brightness).
+        """Get the current device state (screen on/off, brightness, root status).
 
         Returns:
             Device state dictionary.
 
         """
         return await self._request("POST", "/state")
+
+    async def async_set_brightness(self, brightness: int) -> dict[str, Any] | None:
+        """Set the screen brightness on a rooted device.
+
+        Args:
+            brightness: Target brightness on Home Assistant's 0-255 scale.
+
+        Returns:
+            Result dictionary.
+
+        Raises:
+            FrameoApiError: When the device does not support brightness
+                control (not rooted / no backlight node found) or the
+                request otherwise fails.
+
+        """
+        return await self._request("POST", "/brightness", {"brightness": brightness})
 
     async def async_enable_tcpip(self) -> dict[str, Any] | None:
         """Enable wireless ADB debugging on the device.

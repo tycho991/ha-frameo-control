@@ -28,6 +28,7 @@ class FrameoDeviceState:
 
     is_on: bool
     brightness: int
+    rooted: bool
     screen_width: int
     screen_height: int
 
@@ -52,6 +53,9 @@ class FrameoDeviceState:
         return cls(
             is_on=data.get("is_on", False),
             brightness=data.get("brightness", 0),
+            # Only rooted devices with a detected backlight node support
+            # brightness control - see the addon's _detect_backlight_control.
+            rooted=data.get("rooted", False),
             screen_width=screen_width,
             screen_height=screen_height,
         )
@@ -276,4 +280,29 @@ class FrameoDataUpdateCoordinator(DataUpdateCoordinator[FrameoDeviceState]):
             # Try to reconnect and retry once
             if await self.async_reconnect():
                 return await self.client.async_shell(command)
+            raise
+
+    async def async_set_brightness(self, brightness: int) -> dict[str, Any] | None:
+        """Set the screen brightness with automatic reconnection.
+
+        Args:
+            brightness: Target brightness on a 0-255 scale.
+
+        Returns:
+            Command result or None.
+
+        Raises:
+            FrameoApiError: If the device does not support brightness
+                control, or the command fails after reconnection attempts.
+
+        """
+        if not await self.async_ensure_connected():
+            raise FrameoApiError("Device not connected")
+
+        try:
+            return await self.client.async_set_brightness(brightness)
+        except FrameoDeviceDisconnectedError:
+            self._is_connected = False
+            if await self.async_reconnect():
+                return await self.client.async_set_brightness(brightness)
             raise

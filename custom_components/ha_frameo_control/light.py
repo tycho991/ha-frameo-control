@@ -10,7 +10,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import FrameoConfigEntry
 from .api import FrameoApiError
-from .const import ADB_CMD_BRIGHTNESS, ADB_CMD_POWER_KEY, DOMAIN, LOGGER
+from .const import ADB_CMD_POWER_KEY, DOMAIN, LOGGER
 from .coordinator import FrameoDataUpdateCoordinator, FrameoDeviceState
 
 
@@ -32,12 +32,20 @@ async def async_setup_entry(
 
 
 class FrameoScreenLight(CoordinatorEntity[FrameoDataUpdateCoordinator], LightEntity):
-    """Represents the Frameo device screen as a dimmable light."""
+    """Represents the Frameo device screen as a dimmable light.
+
+    Brightness control only works on rooted devices - the addon writes
+    directly to a kernel backlight sysfs node, since Android's normal
+    `settings put system screen_brightness` has no effect on Frameo panels.
+    Whether that is possible is detected once per connection (see the
+    addon's `_detect_backlight_control` and the `rooted` flag it reports).
+
+    Non-rooted devices therefore only expose on/off control - the entity
+    never claims brightness support it cannot deliver.
+    """
 
     _attr_has_entity_name = True
     _attr_name = "Screen"
-    _attr_color_mode = ColorMode.BRIGHTNESS
-    _attr_supported_color_modes = {ColorMode.BRIGHTNESS}
 
     def __init__(
         self,
@@ -59,10 +67,26 @@ class FrameoScreenLight(CoordinatorEntity[FrameoDataUpdateCoordinator], LightEnt
             "name": entry.title,
         }
 
+        # Determined once from the initial state fetched during config entry
+        # setup (coordinator.async_config_entry_first_refresh runs before
+        # platforms are forwarded), not re-evaluated afterwards.
+        supports_brightness = bool(self._state and self._state.rooted)
+        if supports_brightness:
+            self._attr_color_mode = ColorMode.BRIGHTNESS
+            self._attr_supported_color_modes = {ColorMode.BRIGHTNESS}
+        else:
+            self._attr_color_mode = ColorMode.ONOFF
+            self._attr_supported_color_modes = {ColorMode.ONOFF}
+
     @property
     def _state(self) -> FrameoDeviceState | None:
         """Get the current device state from coordinator."""
         return self.coordinator.data
+
+    @property
+    def _supports_brightness(self) -> bool:
+        """Return whether this entity was set up with brightness control."""
+        return ColorMode.BRIGHTNESS in self._attr_supported_color_modes
 
     @property
     def is_on(self) -> bool | None:
@@ -73,8 +97,8 @@ class FrameoScreenLight(CoordinatorEntity[FrameoDataUpdateCoordinator], LightEnt
 
     @property
     def brightness(self) -> int | None:
-        """Return the brightness of the screen (0-255)."""
-        if self._state is None:
+        """Return the brightness of the screen (0-255), if supported."""
+        if self._state is None or not self._supports_brightness:
             return None
         return self._state.brightness
 
@@ -89,12 +113,10 @@ class FrameoScreenLight(CoordinatorEntity[FrameoDataUpdateCoordinator], LightEnt
         await self.coordinator.async_request_refresh()
 
         try:
-            if ATTR_BRIGHTNESS in kwargs:
+            if ATTR_BRIGHTNESS in kwargs and self._supports_brightness:
                 new_brightness = kwargs[ATTR_BRIGHTNESS]
                 LOGGER.debug("Setting Frameo brightness to %s", new_brightness)
-                await self.coordinator.async_execute_command(
-                    ADB_CMD_BRIGHTNESS.format(brightness=new_brightness)
-                )
+                await self.coordinator.async_set_brightness(new_brightness)
 
             if not self.is_on:
                 LOGGER.debug("Turning on Frameo screen")

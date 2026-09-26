@@ -42,8 +42,14 @@ CONNECT_TIMEOUT: Final = 130
 USB_SCAN_TIMEOUT: Final = 15
 
 # ADB shell commands
+#
+# Note: there is intentionally no "set brightness" command here. The obvious
+# `settings put system screen_brightness {brightness}` has no effect on
+# Frameo devices. Brightness control only works via direct backlight sysfs
+# access on rooted devices, which requires device-specific path detection -
+# that logic lives in the addon (see /brightness endpoint) and is exposed to
+# this integration through FrameoAddonApiClient.async_set_brightness().
 ADB_CMD_POWER_KEY: Final = "input keyevent 26"
-ADB_CMD_BRIGHTNESS: Final = "settings put system screen_brightness {brightness}"
 ADB_CMD_POWER_STATE: Final = "dumpsys power"
 ADB_CMD_SCREEN_SIZE: Final = "wm size"
 
