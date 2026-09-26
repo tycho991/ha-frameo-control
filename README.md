@@ -136,7 +136,7 @@ This integration creates a device with several entities to control your frame.
 
 | Entity Type | Name                    | Description                                                                  |
 | :---------- | :---------------------- | :--------------------------------------------------------------------------- |
-| `light`     | Screen                  | Controls the screen on/off state. Brightness control is not yet functional.  |
+| `light`     | Screen                  | Controls the screen on/off state. Brightness control is available **only on rooted devices** (see below); non-rooted devices get on/off control only. |
 | `button`    | Frameo Next Photo       | Uses a **swipe** gesture to advance to the next photo in the official Frameo app. |
 | `button`    | Frameo Previous Photo   | Uses a **swipe** gesture to go to the previous photo in the official Frameo app.|
 | `button`    | Immich Next Photo       | Uses a **tap** on the right side of the screen, optimized for the ImmichFrame app. |
@@ -166,9 +166,22 @@ This integration is still under development. Contributions and ideas are welcome
 * **Backend Improvements:** Investigate removing the need for `host_network: true` in the backend addon for improved network security.
 * **Control Multiple Devices:** Allow a single Home Assistant instance to control more than one Frameo frame.
 
+## 💡 Brightness Control (Rooted Devices Only)
+
+The standard Android `settings put system screen_brightness` command has no effect on Frameo panels, which is why brightness control did not work in earlier versions. The only reliable way found so far is writing directly to the kernel's backlight sysfs node (e.g. `/sys/class/backlight/rk28_bl/brightness`), which requires root.
+
+On every `/connect`, the addon:
+1. Checks for root via `su -c id`.
+2. Looks for a backlight device under `/sys/class/backlight/`.
+
+If both succeed, the `light` entity exposes full brightness control (scaled to the device's native backlight range). If either check fails, the entity falls back to **on/off only** - there is no partial or best-effort brightness support, since a non-rooted device has no known working method to change it.
+
+This means:
+* Non-rooted devices: unaffected, on/off control as before.
+* Rooted devices: brightness control now works, detected automatically - no configuration needed.
+
 ## Known Issues
 
-* **Brightness control does not work.** While the `light` entity is present, attempting to change the brightness will have no effect.
 * The connection to the device can sometimes be lost if the addon or Home Assistant restarts. If entities become `Unavailable`, reloading the integration from the Devices & Services page will usually fix it.
 * There is a significant delay (few seconds even) when interacting from HA (next image, pause, screen, etc.). This was a compromise I had to make to have a reliable connection. 
 * On some devices turning off the screen results in the device sleeping (presumably). This means that the entities become `Unavailable` right after turning off the screen. In this case you manually have to turn it back on and reload the integration. I don't have a workaround for this yet.
